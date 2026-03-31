@@ -1,0 +1,210 @@
+// Komerza Widget - Versiune Funcțională
+const API_KEY = "api key"   // <- Pune aici cheia ta API
+const STORE_ID = "store id"  // <- Pune aici ID-ul magazinului tău
+const BASE_URL = "https://api.komerza.com"
+
+// Paleta de culori
+const C = {
+  bg:           new Color("#0a0a0f"),
+  card:         new Color("#111118"),
+  cardBorder:   new Color("#1e1e2e"),
+  primary:      new Color("#3b82f6"),
+  primaryLight: new Color("#60a5fa"),
+  primaryDim:   new Color("#1e2a3a"),
+  white:        new Color("#f4f4f5"),
+  muted:        new Color("#52525b"),
+  green:        new Color("#22c55e"),
+  greenDim:     new Color("#052e16"),
+  red:          new Color("#ef4444"),
+  redDim:       new Color("#2d0a0a"),
+}
+
+// Funcție generică pentru request API
+async function fetchKomerza(path) {
+  let req = new Request(`${BASE_URL}${path}`)
+  req.headers = {
+    "Authorization": `Bearer ${API_KEY}`,
+    "User-Agent": "KomerzaWidget/1.0 (iOS Scriptable)",
+    "Accept": "application/json"
+  }
+  return await req.loadJSON()
+}
+
+// Funcții utilitare
+function arrow(val) { return val >= 0 ? "↑" : "↓" }
+function changeColor(val) { return val >= 0 ? C.green : C.red }
+function changeDimColor(val) { return val >= 0 ? C.greenDim : C.redDim }
+function absChange(val) { return Math.abs(val).toFixed(1) + "%" }
+
+// Generează timestamp-uri pentru azi
+function getTodayTimestamps() {
+  let now = new Date()
+  let start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+  let end   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+  return { from: encodeURIComponent(start.toISOString()), to: encodeURIComponent(end.toISOString()) }
+}
+
+async function buildWidget() {
+  let storeData = null
+  let analyticsData = null
+  const ts = getTodayTimestamps()
+
+  try {
+    // --- 1. Obține datele magazinului ---
+    const storeResponse = await fetchKomerza(`/stores/${STORE_ID}`)
+    if (storeResponse.success && storeResponse.data) {
+      storeData = storeResponse.data
+    } else {
+      throw new Error(`Store API Error: ${storeResponse.message}`)
+    }
+
+    // --- 2. Obține datele de analytics pentru azi ---
+    const analyticsResponse = await fetchKomerza(`/stores/${STORE_ID}/analytics?from=${ts.from}&to=${ts.to}`)
+    if (analyticsResponse.success && analyticsResponse.data) {
+      analyticsData = analyticsResponse.data
+    } else {
+      console.log(`Analytics API Error: ${analyticsResponse.message}. Using dummy data.`)
+      analyticsData = {
+        totalRevenue: 0,
+        totalRevenueChangePct: 0,
+        newCustomers: 0,
+        newCustomersChangePct: 0,
+        visitors: 0,
+        visitorsChangePct: 0
+      }
+    }
+  } catch (e) {
+    // Eroare la conexiune
+    let w = new ListWidget()
+    w.backgroundColor = C.bg
+    w.setPadding(16, 16, 16, 16)
+    let stack = w.addStack()
+    stack.layoutVertically()
+    stack.centerAlignContent()
+    let icon = stack.addText("⚠️")
+    icon.font = Font.systemFont(22)
+    icon.centerAlignText()
+    stack.addSpacer(6)
+    let msg = stack.addText("Eroare Conexiune Komerza")
+    msg.textColor = C.muted
+    msg.font = Font.mediumSystemFont(12)
+    msg.centerAlignText()
+    stack.addSpacer(4)
+    let errorMsg = stack.addText(`Detalii: ${e.message}`)
+    errorMsg.textColor = C.red
+    errorMsg.font = Font.systemFont(10)
+    errorMsg.centerAlignText()
+    return w
+  }
+
+  // --- Construiește widget-ul ---
+  let widget = new ListWidget()
+  widget.backgroundColor = C.bg
+  widget.setPadding(14, 14, 14, 14)
+
+  // Header
+  let header = widget.addStack()
+  header.layoutHorizontally()
+  header.centerAlignContent()
+
+  let badge = header.addStack()
+  badge.backgroundColor = C.primaryDim
+  badge.cornerRadius = 6
+  badge.setPadding(3, 8, 3, 8)
+  let dot = badge.addText("● ")
+  dot.textColor = C.primary
+  dot.font = Font.systemFont(7)
+  let badgeLabel = badge.addText("KOMERZA")
+  badgeLabel.textColor = C.primaryLight
+  badgeLabel.font = Font.boldSystemFont(9)
+
+  header.addSpacer(8)
+  let shopName = header.addText(storeData.name || "Magazin Komerza")
+  shopName.textColor = C.white
+  shopName.font = Font.semiboldSystemFont(13)
+  shopName.lineLimit = 1
+  header.addSpacer()
+  let time = header.addText(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))
+  time.textColor = C.muted
+  time.font = Font.systemFont(10)
+  widget.addSpacer(12)
+
+  // Linie separatoare
+  let divider = widget.addStack()
+  divider.backgroundColor = C.cardBorder
+  divider.size = new Size(0, 1)
+  widget.addSpacer(12)
+
+  // Statistici
+  let stats = widget.addStack()
+  stats.layoutHorizontally()
+  stats.spacing = 8
+
+  const items = [
+    { label: "Total revenue",      value: `${analyticsData.totalRevenue?.toFixed(2) || '0'} RON`, change: analyticsData.totalRevenueChangePct || 0 },
+    { label: "Customers",    value: String(analyticsData.newCustomers || 0), change: analyticsData.newCustomersChangePct || 0 },
+    { label: "visitors", value: String(analyticsData.visitors || 0), change: analyticsData.visitorsChangePct || 0 },
+  ]
+
+  items.forEach((item, i) => {
+    let card = stats.addStack()
+    card.layoutVertically()
+    card.setPadding(10, 10, 10, 10)
+
+    let topRow = card.addStack()
+    topRow.layoutHorizontally()
+    let lbl = topRow.addText(item.label.toUpperCase())
+    lbl.textColor = C.muted
+    lbl.font = Font.semiboldSystemFont(8)
+    card.addSpacer(6)
+
+    let val = card.addText(item.value)
+    val.textColor = C.white
+    val.font = Font.boldSystemFont(16)
+    val.minimumScaleFactor = 0.7
+    card.addSpacer(6)
+
+    if (item.change !== undefined && item.change !== null) {
+      let pill = card.addStack()
+      pill.backgroundColor = changeDimColor(item.change)
+      pill.cornerRadius = 5
+      pill.setPadding(2, 5, 2, 5)
+      let arrowText = pill.addText(arrow(item.change) + " ")
+      arrowText.textColor = changeColor(item.change)
+      arrowText.font = Font.boldSystemFont(9)
+      let changeText = pill.addText(absChange(item.change))
+      changeText.textColor = changeColor(item.change)
+      changeText.font = Font.semiboldSystemFont(9)
+    } else {
+      let placeholder = card.addStack()
+      placeholder.backgroundColor = C.cardBorder
+      placeholder.cornerRadius = 5
+      placeholder.setPadding(2, 8, 2, 8)
+      let placeholderText = placeholder.addText("N/A")
+      placeholderText.textColor = C.muted
+      placeholderText.font = Font.systemFont(9)
+    }
+
+    if (i < items.length - 1) stats.addSpacer()
+  })
+
+  widget.addSpacer(10)
+
+  // Footer
+  let footer = widget.addStack()
+  footer.layoutHorizontally()
+  let footerLabel = footer.addText("komerza.com")
+  footerLabel.textColor = C.muted
+  footerLabel.font = Font.systemFont(9)
+  footer.addSpacer()
+  let updated = footer.addText("Actualizat " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))
+  updated.textColor = C.muted
+  updated.font = Font.systemFont(9)
+
+  return widget
+}
+
+let widget = await buildWidget()
+Script.setWidget(widget)
+widget.presentMedium()
+Script.complete()
