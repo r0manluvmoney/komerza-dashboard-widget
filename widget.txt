@@ -141,7 +141,7 @@ async function buildWidget() {
   stats.spacing = 8
 
   const items = [
-    { label: "Total revenue",      value: `${analyticsData.totalRevenue?.toFixed(2) || '0'} RON`, change: analyticsData.totalRevenueChangePct || 0 },
+    { label: "Total revenue",      value: `${analyticsData.totalRevenue?.toFixed(2) || '0'} Euro`, change: analyticsData.totalRevenueChangePct || 0 },
     { label: "Customers",    value: String(analyticsData.newCustomers || 0), change: analyticsData.newCustomersChangePct || 0 },
     { label: "visitors", value: String(analyticsData.visitors || 0), change: analyticsData.visitorsChangePct || 0 },
   ]
